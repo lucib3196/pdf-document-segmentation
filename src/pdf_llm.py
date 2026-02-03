@@ -4,8 +4,9 @@ from typing import Optional, Sequence, Type
 import pymupdf
 from pydantic import BaseModel
 from langchain_core.language_models.chat_models import BaseChatModel
-from .type import PDFInput, BaseOutput
-from .image_payload_builder import ImagePayloadBuilder
+from langchain.chat_models import init_chat_model
+from type import PDFInput, BaseOutput
+from image_payload_builder import ImagePayloadBuilder
 
 
 class PDFMultiModalLLM:
@@ -13,6 +14,7 @@ class PDFMultiModalLLM:
         self,
         *,
         prompt: str,
+        model: BaseChatModel,
         pdf_path: PDFInput | None = None,
         image_bytes: Sequence[bytes] | None = None,
     ):
@@ -23,6 +25,7 @@ class PDFMultiModalLLM:
 
         self.prompt = prompt
         self.builder = ImagePayloadBuilder()
+        self.llm = model
 
         if pdf_path is not None:
             self.pdf_bytes = self._load_pdf_as_images(pdf_path)
@@ -56,31 +59,37 @@ class PDFMultiModalLLM:
 
     def invoke(
         self,
-        llm: BaseChatModel,
         output_model: Optional[Type[BaseModel]] = BaseOutput,
     ):
         message = self.prepare_payload()
         if output_model:
-            chain = llm.with_structured_output(schema=output_model)
+            chain = self.llm.with_structured_output(schema=output_model)
             return chain.invoke([message])
         else:
-            return llm.invoke([message])
+            return self.llm.invoke([message])
 
     async def ainvoke(
         self,
-        llm: BaseChatModel,
         output_model: Optional[Type[BaseModel]] = BaseOutput,
     ):
         message = self.prepare_payload()
         if output_model:
-            chain = llm.with_structured_output(schema=output_model)
+            chain = self.llm.with_structured_output(
+                schema=output_model,
+            )
             return chain.ainvoke([message])
         else:
-            return llm.ainvoke([message])
+            return self.llm.ainvoke([message])
 
 
 if __name__ == "__main__":
-    path = "src/data/Lecture_02_03.pdf"
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    path = "data/Lecture_02_03.pdf"
     output = Path(r"src\data\images").resolve()
-    data = PDFMultiModalLLM(prompt="Hi", pdf_path=path).prepare_payload()
+    model = init_chat_model(model="gpt-4o", model_provider="openai")
+    data = PDFMultiModalLLM(
+        prompt="What is in the image", pdf_path=path, model=model
+    ).invoke()
     print(data)

@@ -20,38 +20,34 @@ class PDFAnnotator:
         self.margin_frac = margin_frac
         self.offset = offset
         self.zoom = zoom
+        self._validate()
 
-    def _to_image_bytes(self, annotate: bool = True) -> List[bytes]:
+    def annotate_and_render_pages(self) -> List[bytes]:
         doc = pymupdf.open(self.pdf)
         image_bytes: List[bytes] = []
         for page_num in range(len(doc)):
             page: Page = doc.load_page(page_num)
-            if annotate:
-                self._get_draw(page)
+            self._annotate_page(page)
             matrix = pymupdf.Matrix(self.zoom, self.zoom)
             pix = page.get_pixmap(matrix=matrix)
             image_bytes.append(pix.tobytes("png"))
         doc.close()
         return image_bytes
 
-    def save_as_images(self, output_path: Path | str, annotate: bool = True) -> None:
+    def _annotate_and_save(self) -> str:
+        output_path = self.pdf.with_name(f"{self.pdf.stem}_annotated.pdf")
+        for b in self.annotate_and_render_pages():
+            output_path.write_bytes(b)
+        return output_path.as_posix()
+
+    def save_annotated_pages_as_images(self, output_path: Path | str) -> None:
         output_path = Path(output_path).resolve()
         output_path.mkdir(parents=True, exist_ok=True)
-        for i, img_bytes in enumerate(self._to_image_bytes(annotate)):
+        for i, img_bytes in enumerate(self.annotate_and_render_pages()):
             out_file = output_path / f"{self.pdf.stem}_page_{i + 1}.png"
             out_file.write_bytes(img_bytes)
 
-    def annotate_pages(self) -> str:
-        doc = pymupdf.open(self.pdf)
-        for page_num in range(len(doc)):
-            page: Page = doc.load_page(page_num)
-            self._get_draw(page)
-        output_path = self.pdf.with_name(f"{self.pdf.stem}_annotated.pdf")
-        doc.save(output_path)
-        doc.close()
-        return output_path.as_posix()
-
-    def _get_draw(
+    def _annotate_page(
         self,
         page: Page,
     ):
@@ -123,6 +119,8 @@ class PDFAnnotator:
 
 
 if __name__ == "__main__":
-    path = "src/data/Lecture_02_03.pdf"
+    path = "data/Lecture_02_03.pdf"
     output = Path(r"src\data\images").resolve()
-    PDFAnnotator(path, anchor="bottom-left", margin_frac=1 / 20).save_as_images(output)
+    PDFAnnotator(
+        path, anchor="bottom-left", margin_frac=1 / 20
+    ).save_annotated_pages_as_images(output)

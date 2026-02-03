@@ -4,8 +4,6 @@ from typing import Sequence, List
 from type import ImageInput
 
 
-
-
 class ImagePayloadBuilder:
     @staticmethod
     def _to_bytes(data: ImageInput) -> bytes:

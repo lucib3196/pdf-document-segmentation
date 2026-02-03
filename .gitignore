@@ -1,1 +1,96 @@
 data
+
+# ------------------------------
+# Python / Poetry
+# ------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Poetry
+poetry.lock.backup
+poetry.toml
+
+# ------------------------------
+# Build / Distribution
+# ------------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ------------------------------
+# Testing / Coverage
+# ------------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ------------------------------
+# IDE / Editor
+# ------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ------------------------------
+# OS
+# ------------------------------
+.DS_Store
+Thumbs.db
+
+# ------------------------------
+# Logs
+# ------------------------------
+*.log
+
+# ------------------------------
+# PDFs / Images / Binary Artifacts
+# ------------------------------
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.tiff
+*.bmp
+
+# Generated outputs / temp files
+output/
+outputs/
+artifacts/
+tmp/
+temp/
+
+# ------------------------------
+# Data / JSON dumps
+# ------------------------------
+*.json
+
+# ------------------------------
+# Jupyter
+# ------------------------------
+.ipynb_checkpoints/
+
+# ------------------------------
+# Environment variables / secrets
+# ------------------------------
+.env
+.env.*
+*.key
+*.pem
+
+# ------------------------------
+# PyMuPDF / cache (optional)
+# ------------------------------
+*.pymupdf
