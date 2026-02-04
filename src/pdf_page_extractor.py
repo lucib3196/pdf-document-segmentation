@@ -77,7 +77,7 @@ def get_sections(state: State):
 def seperate_pages(state: State):
     parsed: list[CleanedSection] = []
 
-    separator = PDFSeperator(pdf_path=state.pdf)
+    separator = PDFSeperator(image_bytes=state.pdf_bytes)
 
     for section in state.raw_output:
         cleaned = CleanedSection(**section.model_dump())

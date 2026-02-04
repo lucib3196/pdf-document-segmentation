@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from typing import List, Tuple
+from typing import List, Tuple, Literal, Optional
 import pymupdf
 from pymupdf import Page
 from type import Anchor, AnchorPos
@@ -22,30 +22,61 @@ class PDFAnnotator:
         self.zoom = zoom
         self._validate()
 
-    def annotate_and_render_pages(self) -> List[bytes]:
+    def annotate_and_render_pages(
+        self,
+        method: Literal["image", "pdf"] = "image",
+    ) -> List[bytes] | bytes:
         doc = pymupdf.open(self.pdf)
-        image_bytes: List[bytes] = []
-        for page_num in range(len(doc)):
-            page: Page = doc.load_page(page_num)
-            self._annotate_page(page)
+
+        try:
+            # 1. Annotate all pages
+            for page in doc:
+                self._annotate_page(page)
+
+            # Return annotated PDF as bytes
+            if method == "pdf":
+                return doc.tobytes()
+
+            # Render annotated pages as images
+            image_bytes: list[bytes] = []
             matrix = pymupdf.Matrix(self.zoom, self.zoom)
-            pix = page.get_pixmap(matrix=matrix)
-            image_bytes.append(pix.tobytes("png"))
-        doc.close()
-        return image_bytes
 
-    def _annotate_and_save(self) -> str:
-        output_path = self.pdf.with_name(f"{self.pdf.stem}_annotated.pdf")
-        for b in self.annotate_and_render_pages():
-            output_path.write_bytes(b)
+            for page in doc:
+                pix = page.get_pixmap(matrix=matrix)
+                image_bytes.append(pix.tobytes("png"))
+
+            return image_bytes
+
+        finally:
+            doc.close()
+
+    def _annotate_and_save(
+        self,
+        method: Literal["pdf", "image"] = "image",
+        output_path: Optional[str | Path] = None,
+    ) -> str:
+        data = self.annotate_and_render_pages(method)
+        output_path = self.get_output_path(path, method)
+        if method == "pdf":
+            if not isinstance(data, (bytes, bytearray)):
+                raise ValueError("Expected PDF data to be bytes")
+            output_path.write_bytes(data)
+            return output_path.as_posix()
+
+        # --- image mode ---
+        if not isinstance(data, list) or not all(
+            isinstance(d, (bytes, bytearray)) for d in data
+        ):
+            raise ValueError("Expected image data to be list of bytes")
+
+        paths: list[Path] = []
+
+        for i, b in enumerate(data, start=1):
+            out = output_path / f"{self.pdf.stem}_page_{i}.png"
+            out.write_bytes(b)
+            paths.append(out)
+
         return output_path.as_posix()
-
-    def save_annotated_pages_as_images(self, output_path: Path | str) -> None:
-        output_path = Path(output_path).resolve()
-        output_path.mkdir(parents=True, exist_ok=True)
-        for i, img_bytes in enumerate(self.annotate_and_render_pages()):
-            out_file = output_path / f"{self.pdf.stem}_page_{i + 1}.png"
-            out_file.write_bytes(img_bytes)
 
     def _annotate_page(
         self,
@@ -113,6 +144,21 @@ class PDFAnnotator:
                 raise ValueError(f"Invalid anchor: {anchor}")
         return cx, cy
 
+    def get_output_path(
+        self,
+        path: Optional[str | Path] = None,
+        method: Literal["image", "pdf"] = "image",
+    ) -> Path:
+        if path:
+            return Path(path).resolve()
+        if method == "pdf":
+            output_path = self.pdf.with_name(f"{self.pdf.stem}_annotated.pdf")
+        elif method == "image":
+            output_path = self.pdf.with_name(f"{self.pdf.stem}_annotated_pages")
+            output_path.mkdir(parents=True, exist_ok=True)
+
+        return output_path
+
     def _validate(self):
         if not self.pdf.exists():
             raise FileNotFoundError(f"PDF Path {self.pdf} does not exist")
@@ -121,6 +167,4 @@ class PDFAnnotator:
 if __name__ == "__main__":
     path = "data/Lecture_02_03.pdf"
     output = Path(r"src\data\images").resolve()
-    PDFAnnotator(
-        path, anchor="bottom-left", margin_frac=1 / 20
-    ).save_annotated_pages_as_images(output)
+    PDFAnnotator(path, anchor="bottom-left", margin_frac=1 / 20)._annotate_and_save()
