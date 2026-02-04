@@ -1,8 +1,10 @@
 from pathlib import Path
+from typing import Literal, Optional, Tuple
 
-from typing import List, Tuple, Literal, Optional
 import pymupdf
 from pymupdf import Page
+
+from pdf_image_converter import PDFImageConverter
 from type import Anchor, AnchorPos
 
 
@@ -24,29 +26,16 @@ class PDFAnnotator:
 
     def annotate_and_render_pages(
         self,
-        method: Literal["image", "pdf"] = "image",
-    ) -> List[bytes] | bytes:
+    ) -> bytes:
         doc = pymupdf.open(self.pdf)
 
         try:
-            # 1. Annotate all pages
+            # Annotate all pages
             for page in doc:
+                assert isinstance(page, Page)
                 self._annotate_page(page)
-
             # Return annotated PDF as bytes
-            if method == "pdf":
-                return doc.tobytes()
-
-            # Render annotated pages as images
-            image_bytes: list[bytes] = []
-            matrix = pymupdf.Matrix(self.zoom, self.zoom)
-
-            for page in doc:
-                pix = page.get_pixmap(matrix=matrix)
-                image_bytes.append(pix.tobytes("png"))
-
-            return image_bytes
-
+            return doc.tobytes()
         finally:
             doc.close()
 
@@ -55,27 +44,17 @@ class PDFAnnotator:
         method: Literal["pdf", "image"] = "image",
         output_path: Optional[str | Path] = None,
     ) -> str:
-        data = self.annotate_and_render_pages(method)
+        data = self.annotate_and_render_pages()
         output_path = self.get_output_path(path, method)
         if method == "pdf":
             if not isinstance(data, (bytes, bytearray)):
                 raise ValueError("Expected PDF data to be bytes")
             output_path.write_bytes(data)
             return output_path.as_posix()
-
-        # --- image mode ---
-        if not isinstance(data, list) or not all(
-            isinstance(d, (bytes, bytearray)) for d in data
-        ):
-            raise ValueError("Expected image data to be list of bytes")
-
-        paths: list[Path] = []
-
-        for i, b in enumerate(data, start=1):
-            out = output_path / f"{self.pdf.stem}_page_{i}.png"
-            out.write_bytes(b)
-            paths.append(out)
-
+        elif method == "image":
+            PDFImageConverter().save_to_images(
+                data, output_path, pdf_name=self.pdf.stem
+            )
         return output_path.as_posix()
 
     def _annotate_page(
@@ -167,4 +146,6 @@ class PDFAnnotator:
 if __name__ == "__main__":
     path = "data/Lecture_02_03.pdf"
     output = Path(r"src\data\images").resolve()
-    PDFAnnotator(path, anchor="bottom-left", margin_frac=1 / 20)._annotate_and_save()
+    PDFAnnotator(path, anchor="bottom-left", margin_frac=1 / 20)._annotate_and_save(
+        method="image"
+    )

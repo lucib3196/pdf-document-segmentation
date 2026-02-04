@@ -1,7 +1,8 @@
 from pathlib import Path
 import pymupdf
-from type import PDFInput, BaseOutput
-from typing import Sequence, Iterable
+from type import PDFInput
+from typing import Sequence, Literal
+from pdf_image_converter import PDFImageConverter
 
 
 class PDFSeperator:
@@ -25,7 +26,7 @@ class PDFSeperator:
         elif pdf_bytes:
             self.pdf = pdf_bytes
         elif image_bytes:
-            self.pdf = self.images_to_pdf(image_bytes)
+            self.pdf = PDFImageConverter().images_to_pdf(image_bytes)
 
         else:
             raise ValueError("Unexpected Error Occured")
@@ -36,27 +37,25 @@ class PDFSeperator:
         dst.insert_pdf(src, from_page=start, to_page=end, rotate=0)
         return dst.tobytes()
 
-    def images_to_pdf(self, images: Iterable[bytes]) -> bytes:
-        doc = pymupdf.open()
-        for img_bytes in images:
-            img_doc = pymupdf.open(stream=img_bytes, filetype="png")
-            rect = img_doc[0].rect
-            page = doc.new_page(width=rect.width, height=rect.height)
-            page.insert_image(rect, stream=img_bytes)
-            img_doc.close()
-        pdf_bytes = doc.tobytes()
-        doc.close()
-        return pdf_bytes
-
-    def _extract_and_save(self, start: int, end: int, output_dir: str | Path) -> str:
+    def _extract_and_save(
+        self,
+        start: int,
+        end: int,
+        output_dir: str | Path,
+        pdf_name: str,
+        method: Literal["pdf", "image"] = "pdf",
+    ) -> str:
         output_dir = Path(output_dir).resolve()
         if not output_dir.exists():
             raise ValueError("Failed to extract pdf path {output_dir} does not exist")
+        data = self.extract_page_range(start, end)
         output_path = output_dir / (f"{self.pdf_name}_extracted_{start}_{end}.pdf")
-        output_path.write_bytes(self.extract_page_range(start, end))
+        PDFImageConverter().save_to_images(data, output_dir, pdf_name)
         return output_path.as_posix()
 
 
 if __name__ == "__main__":
     path = r"data\Lecture_02_03.pdf"
-    PDFSeperator(path)._extract_and_save(1, 3, output_dir="./data")
+    PDFSeperator(path)._extract_and_save(
+        1, 3, output_dir="./data", pdf_name="pdf_extracted"
+    )

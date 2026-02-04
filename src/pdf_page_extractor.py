@@ -9,8 +9,8 @@ from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
 
 from type import PDFInput, PageRange
-from pdf_annotator import PDFAnnotator
-from pdf_llm import PDFMultiModalLLM
+from annotator.pdf_annotator import PDFAnnotator
+from pdf_llm.pdf_llm import PDFMultiModalLLM
 from pdf_seperator import PDFSeperator
 
 

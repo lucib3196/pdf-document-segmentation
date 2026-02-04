@@ -7,6 +7,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain.chat_models import init_chat_model
 from type import PDFInput, BaseOutput
 from image_payload_builder import ImagePayloadBuilder
+from pdf_image_converter import PDFImageConverter
 
 
 class PDFMultiModalLLM:
@@ -28,24 +29,11 @@ class PDFMultiModalLLM:
         self.llm = model
 
         if pdf_path is not None:
-            self.pdf_bytes = self._load_pdf_as_images(pdf_path)
+            self.pdf_bytes = PDFImageConverter().convert_to_images(pdf_path)
         elif image_bytes:
             self.pdf_bytes = list(image_bytes)
         else:
             raise ValueError("Unexpected Error Occured")
-
-    def _load_pdf_as_images(self, pdf_path: PDFInput) -> list[bytes]:
-        """
-        Convert PDF pages to image bytes.
-        """
-        doc = pymupdf.open(pdf_path)
-        images: list[bytes] = []
-
-        for page in doc:
-            pix = page.get_pixmap(dpi=150)
-            images.append(pix.tobytes("png"))
-        doc.close()
-        return images
 
     def prepare_payload(
         self,

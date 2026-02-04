@@ -4,6 +4,7 @@ from enum import Enum
 
 
 AnchorPos = Literal["top-left", "top-right", "bottom-right", "bottom-left"]
+ImageExt = Literal["png", "jpeg"]
 
 
 class Anchor(str, Enum):
@@ -13,7 +14,7 @@ class Anchor(str, Enum):
     BOTTOM_LEFT = "bottom-left"
 
 
-PDFInput = str | Path
+PDFInput = str | Path | bytes
 ImageBytes = bytes
 
 ImageInput = PDFInput | ImageBytes
