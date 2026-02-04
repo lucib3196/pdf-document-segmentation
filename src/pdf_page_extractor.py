@@ -1,55 +1,70 @@
-from langgraph.graph import StateGraph, START, END
-from pydantic import BaseModel, Field
-from type import PDFInput, PageRange
-from typing import List
-from pdf_annotator import PDFAnnotator
 from pathlib import Path
-from pdf_llm import PDFMultiModalLLM
+from typing import List, Type
+from typing import Generic, TypeVar, List
+import base64
+
+from pydantic import BaseModel, field_serializer, Field
+from langgraph.graph import StateGraph, START, END
 from langchain.chat_models import init_chat_model
 from dotenv import load_dotenv
+
+from type import PDFInput, PageRange
+from pdf_annotator import PDFAnnotator
+from pdf_llm import PDFMultiModalLLM
 from pdf_seperator import PDFSeperator
-from pydantic import field_serializer
-import base64
+
 
 load_dotenv()
 
 
-class SectionBreakDown(BaseModel):
-    title: str = Field(
-        description="Short, descriptive title identifying the derivation or section."
-    )
-    description: str = Field(
-        description="Brief summary of the derivation, stating what is being derived and its purpose, without adding interpretation beyond the source material."
-    )
-    page_range: PageRange = Field(
-        description="Inclusive start and end pages where the derivation appears in the lecture material."
-    )
+class Section(BaseModel):
+    """
+    Base class for any structured unit extracted from a document.
+    This should contain ONLY semantic fields produced by the LLM.
+    """
+
+    page_range: PageRange
 
 
-class CleanedSection(SectionBreakDown):
+T = TypeVar("T", bound=Section)
+
+
+class ListOutput(BaseModel, Generic[T]):
+    items: List[T]
+
+
+class ParsedUnit(
+    BaseModel,
+    Generic[T],
+):
+    """
+    A semantic unit enriched with pipeline-generated artifacts.
+    """
+
+    data: T
     pdf_bytes: bytes | None = None
 
     @field_serializer("pdf_bytes")
     def serialize_pdf_bytes(self, value: bytes):
-
         return base64.b64encode(value).decode("ascii")
-
-
-class Sections(BaseModel):
-    sections: List[SectionBreakDown]
 
 
 model = init_chat_model(model="gpt-4o", model_provider="openai")
 
 
-class State(BaseModel):
+class State(BaseModel, Generic[T]):
+    # --- Inputs ---
     pdf: PDFInput
     prompt: str
-    pdf_bytes: List[bytes] = []
-    raw_output: List[SectionBreakDown] = []
-    parsed: List[CleanedSection] = []
+    pdf_images: list[bytes] = []
 
-    @field_serializer("pdf_bytes")
+    # --- Schema configuration ---
+    output_schema: Type[ListOutput[T]] = Field(exclude=True)
+    raw_output: List[T] = []
+
+    parsed: list[ParsedUnit[T]] = Field(default_factory=list, exclude=False)
+
+    @field_serializer("pdf_images")
     def serialize_pdf_bytes(self, value: list[bytes]):
 
         return [base64.b64encode(b).decode("ascii") for b in value]
@@ -59,37 +74,36 @@ def prepare_pdf(state: State):
     state.pdf = Path(state.pdf)
     if not state.pdf.exists():
         raise ValueError("PDF path cannot be resolved")
-    pdf_bytes = PDFAnnotator(state.pdf).annotate_and_render_pages()
-    return {"pdf_bytes": pdf_bytes}
+    pdf_images = PDFAnnotator(state.pdf).annotate_and_render_pages()
+    return {"pdf_images": pdf_images}
 
 
 def get_sections(state: State):
     llm = PDFMultiModalLLM(
         prompt=state.prompt,
-        image_bytes=state.pdf_bytes,
+        image_bytes=state.pdf_images,
         model=model,
     )
-    result = llm.invoke(Sections)
-    parsed = Sections.model_validate(result)
-    return {"raw_output": parsed.sections}
+    result = llm.invoke(state.output_schema)
+    result = state.output_schema.model_validate(result)
+    return {"raw_output": result.items}
 
 
-def seperate_pages(state: State):
-    parsed: list[CleanedSection] = []
-
-    separator = PDFSeperator(image_bytes=state.pdf_bytes)
-
-    for section in state.raw_output:
-        cleaned = CleanedSection(**section.model_dump())
-
-        page_range = section.page_range
-        cleaned.pdf_bytes = separator.extract_page_range(
-            start=page_range.start_page,
-            end=page_range.end_page,
+def seperate_pages(state: State[T]):
+    parsed = []
+    separator = PDFSeperator(image_bytes=state.pdf_images)
+    for unit in state.raw_output:
+        page_range = getattr(unit, "page_range", None)
+        if page_range is None:
+            raise ValueError("Unit does not define a page_range")
+        cleaned = ParsedUnit[T](
+            data=unit,
+            pdf_bytes=separator.extract_page_range(
+                start=page_range.start_page - 1,
+                end=page_range.end_page - 1,
+            ),
         )
-
         parsed.append(cleaned)
-
     return {"parsed": parsed}
 
 
@@ -107,8 +121,17 @@ graph = graph.compile()
 
 if __name__ == "__main__":
     path = "data/Lecture_02_03.pdf"
+
+    class MySection(Section, BaseModel):
+        title: str
+        description: str
+
+    class MySections(ListOutput[MySection]):
+        items: List[MySection]
+
     result = graph.invoke(
         State(
+            output_schema=MySections,
             pdf=path,
             prompt="""You are tasked with analyzing the provided lecture material.
 Identify and extract all sections that contain mathematical derivations.
